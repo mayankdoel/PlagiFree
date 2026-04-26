@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, FileText, LoaderCircle, Sparkles, Upload } from "lucide-react";
 
@@ -26,6 +26,7 @@ export function CheckerForm() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const uploadRequestId = useRef(0);
+  const queuedSubmitRef = useRef(false);
 
   const textStats = useMemo<InputStats>(() => {
     const words = text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -37,6 +38,41 @@ export function CheckerForm() {
 
   const activeStats = file && fileStats ? fileStats : textStats;
   const activeSourceLabel = file ? "From uploaded file" : "From pasted text";
+
+  const runCheck = useCallback(() => {
+    const formData = new FormData();
+
+    if (file) {
+      formData.append("file", file);
+    } else if (text.trim()) {
+      formData.append("text", text);
+    }
+
+    startTransition(() => {
+      void (async () => {
+        try {
+          const response = await fetch("/api/check", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error ?? "Unable to complete plagiarism check.");
+          }
+
+          const payload = (await response.json()) as { id: string };
+          router.push(`/results/${payload.id}`);
+        } catch (submissionError) {
+          setError(
+            submissionError instanceof Error
+              ? submissionError.message
+              : "Something went wrong while checking the text.",
+          );
+        }
+      })();
+    });
+  }, [file, router, text]);
 
   useEffect(() => {
     if (!file || !acceptedFileType(file.name)) {
@@ -77,6 +113,7 @@ export function CheckerForm() {
           return;
         }
 
+        queuedSubmitRef.current = false;
         setFile(null);
         setFileStats(null);
         setError(
@@ -89,6 +126,13 @@ export function CheckerForm() {
       }
     })();
   }, [file]);
+
+  useEffect(() => {
+    if (!isLoadingFileStats && queuedSubmitRef.current) {
+      queuedSubmitRef.current = false;
+      runCheck();
+    }
+  }, [isLoadingFileStats, runCheck]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
@@ -112,37 +156,12 @@ export function CheckerForm() {
 
     setError(null);
 
-    const formData = new FormData();
-    if (file) {
-      formData.append("file", file);
-    } else if (text.trim()) {
-      formData.append("text", text);
+    if (isLoadingFileStats) {
+      queuedSubmitRef.current = true;
+      return;
     }
 
-    startTransition(() => {
-      void (async () => {
-        try {
-          const response = await fetch("/api/check", {
-            method: "POST",
-            body: formData,
-          });
-
-          if (!response.ok) {
-            const payload = await response.json().catch(() => ({}));
-            throw new Error(payload.error ?? "Unable to complete plagiarism check.");
-          }
-
-          const payload = (await response.json()) as { id: string };
-          router.push(`/results/${payload.id}`);
-        } catch (submissionError) {
-          setError(
-            submissionError instanceof Error
-              ? submissionError.message
-              : "Something went wrong while checking the text.",
-          );
-        }
-      })();
-    });
+    runCheck();
   };
 
   return (
@@ -200,13 +219,13 @@ export function CheckerForm() {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={isPending || isLoadingFileStats}
+          disabled={isPending}
           className="group inline-flex min-w-[210px] items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-accent-cyan via-sky-400 to-accent-mint px-6 py-4 text-base font-semibold text-slate-950 shadow-soft transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_42px_rgba(98,230,255,0.28)] disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isPending || isLoadingFileStats ? (
             <>
               <LoaderCircle className="h-5 w-5 animate-spin" />
-              {isLoadingFileStats ? "Reading file..." : "Checking sources..."}
+              {isLoadingFileStats ? "Preparing file..." : "Checking sources..."}
             </>
           ) : (
             <>
