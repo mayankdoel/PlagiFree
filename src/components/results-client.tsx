@@ -104,9 +104,22 @@ export function ResultsClient({ reportId }: { reportId: string }) {
   }
 
   const severity = severityConfig[report.severity];
+  const analysisWarning = report.analysis?.warning;
+  const providerLabel =
+    report.analysis?.searchProvider === "bing-api"
+      ? "Bing API"
+      : report.analysis?.searchProvider === "bing-web"
+        ? "Bing web fallback"
+        : "Search unavailable";
 
   return (
     <div className="space-y-8">
+      {analysisWarning ? (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-5 py-4 text-sm text-amber-100">
+          {analysisWarning}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <Link
           href="/"
@@ -160,6 +173,13 @@ export function ResultsClient({ reportId }: { reportId: string }) {
                   Source type
                 </span>
                 <strong className="text-white">{report.source?.inputType ?? "text"}</strong>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                <span className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-accent-cyan" />
+                  Search engine
+                </span>
+                <strong className="text-white">{providerLabel}</strong>
               </div>
               <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
                 <span className="flex items-center gap-2">
