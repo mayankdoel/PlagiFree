@@ -61,6 +61,36 @@ export function cleanedText(text: string) {
   return cleanTokens(tokenize(text)).join(" ");
 }
 
+function isNumericToken(token: string) {
+  return /^\d+$/.test(token);
+}
+
+function isRomanNumeralToken(token: string) {
+  return /^(?:[ivxlcdm]+)$/i.test(token);
+}
+
+function isSearchableToken(token: string) {
+  if (token.length < 3) {
+    return false;
+  }
+
+  if (isNumericToken(token) || isRomanNumeralToken(token)) {
+    return false;
+  }
+
+  return /[a-z]/i.test(token);
+}
+
+function phraseQualityScore(phrase: string) {
+  const tokens = phrase.split(" ");
+  const uniqueCount = new Set(tokens).size;
+  const longTokenCount = tokens.filter((token) => token.length > 4).length;
+  const alphabeticCount = tokens.filter((token) => /[a-z]/i.test(token)).length;
+  const repeatedTokenPenalty = tokens.length - uniqueCount;
+
+  return uniqueCount * 4 + longTokenCount * 2 + alphabeticCount - repeatedTokenPenalty * 3;
+}
+
 export function buildNGrams(tokens: string[], min = 5, max = 8, limit = 12) {
   const counts = new Map<string, number>();
 
@@ -79,6 +109,29 @@ export function buildNGrams(tokens: string[], min = 5, max = 8, limit = 12) {
       return right[0].length - left[0].length;
     })
     .map(([phrase]) => phrase)
+    .filter((phrase, index, phrases) => phrases.findIndex((item) => item.includes(phrase)) === index)
+    .slice(0, limit);
+}
+
+export function selectSearchPhrases(text: string, limit = 12) {
+  const filteredTokens = cleanTokens(tokenize(text)).filter(isSearchableToken);
+  const candidates = buildNGrams(filteredTokens, 5, 8, limit * 5);
+
+  return candidates
+    .map((phrase) => ({
+      phrase,
+      score: phraseQualityScore(phrase),
+      uniqueWords: new Set(phrase.split(" ")).size,
+    }))
+    .filter((candidate) => candidate.uniqueWords >= 4)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return right.phrase.length - left.phrase.length;
+    })
+    .map((candidate) => candidate.phrase)
     .filter((phrase, index, phrases) => phrases.findIndex((item) => item.includes(phrase)) === index)
     .slice(0, limit);
 }
