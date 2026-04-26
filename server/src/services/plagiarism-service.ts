@@ -71,6 +71,84 @@ function tokenOverlapRatio(phrase: string, content: string) {
   return overlapCount / phraseTokens.length;
 }
 
+const GENERIC_MATCH_TOKENS = new Set([
+  "project",
+  "projects",
+  "document",
+  "documents",
+  "report",
+  "reports",
+  "development",
+  "deployment",
+  "application",
+  "applications",
+  "system",
+  "systems",
+  "analysis",
+  "validation",
+  "implementation",
+  "solution",
+  "solutions",
+  "frontend",
+  "backend",
+  "cloud",
+  "hosted",
+  "machine",
+  "virtual",
+  "results",
+  "testing",
+  "introduction",
+  "chapter",
+  "figure",
+  "table",
+  "workflow",
+]);
+
+function matchingTokenCount(phrase: string, content: string) {
+  const phraseTokens = cleanTokens(tokenize(phrase));
+  if (!phraseTokens.length) {
+    return 0;
+  }
+
+  const contentTokens = new Set(cleanTokens(tokenize(content)));
+  return phraseTokens.filter((token) => contentTokens.has(token)).length;
+}
+
+function signatureTokenOverlapCount(phrase: string, content: string) {
+  const signatureTokens = cleanTokens(tokenize(phrase)).filter(
+    (token) => token.length >= 4 && !GENERIC_MATCH_TOKENS.has(token),
+  );
+
+  if (!signatureTokens.length) {
+    return 0;
+  }
+
+  const contentTokens = new Set(cleanTokens(tokenize(content)));
+  return signatureTokens.filter((token) => contentTokens.has(token)).length;
+}
+
+function containsPhraseFragment(content: string, phrase: string, minFragmentLength = 4) {
+  const phraseTokens = phrase
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  if (phraseTokens.length < minFragmentLength) {
+    return containsExactPhrase(content, phrase);
+  }
+
+  const loweredContent = content.toLowerCase();
+
+  for (let index = 0; index <= phraseTokens.length - minFragmentLength; index += 1) {
+    const fragment = phraseTokens.slice(index, index + minFragmentLength).join(" ").toLowerCase();
+    if (loweredContent.includes(fragment)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function calculateMatchSimilarity(options: {
   phrase: string;
   pageText: string;
@@ -79,26 +157,51 @@ function calculateMatchSimilarity(options: {
   inputText: string;
   inputCleaned: string;
 }) {
-  const phraseContext = [options.title, options.snippet, options.pageText.slice(0, 4000)]
+  const titleAndSnippet = [options.title, options.snippet].filter(Boolean).join(" ");
+  const pageExcerpt = options.pageText.slice(0, 2000);
+  const phraseContext = [titleAndSnippet, pageExcerpt]
     .filter(Boolean)
     .join(" ");
   const phraseSimilarity = Math.round(cosineSimilarity(options.phrase, phraseContext) * 100);
+  const snippetSimilarity = titleAndSnippet
+    ? Math.round(cosineSimilarity(options.phrase, titleAndSnippet) * 100)
+    : 0;
   const documentSimilarity = options.pageText
     ? Math.round(cosineSimilarity(options.inputCleaned, options.pageText) * 100)
     : 0;
-  const overlapRatio = tokenOverlapRatio(options.phrase, phraseContext);
+  const snippetOverlapRatio = tokenOverlapRatio(options.phrase, titleAndSnippet);
+  const snippetOverlapCount = matchingTokenCount(options.phrase, titleAndSnippet);
+  const snippetSignatureOverlap = signatureTokenOverlapCount(options.phrase, titleAndSnippet);
   const phraseAppearsInDocument = containsExactPhrase(options.inputText, options.phrase);
-  const exactPhraseFound =
-    containsExactPhrase(phraseContext, options.phrase) && phraseAppearsInDocument;
+  const exactPhraseFound = containsExactPhrase(titleAndSnippet, options.phrase) && phraseAppearsInDocument;
+  const fragmentFound = containsPhraseFragment(titleAndSnippet, options.phrase) && phraseAppearsInDocument;
+  const pageFragmentFound = containsPhraseFragment(pageExcerpt, options.phrase) && phraseAppearsInDocument;
 
-  let similarity = Math.max(documentSimilarity, phraseSimilarity);
+  const hasStrongEvidence =
+    exactPhraseFound ||
+    fragmentFound ||
+    pageFragmentFound ||
+    (snippetSignatureOverlap >= 3 &&
+      (snippetSimilarity >= 18 || documentSimilarity >= 10 || snippetOverlapRatio >= 0.34)) ||
+    (snippetSignatureOverlap >= 2 && snippetOverlapRatio >= 0.55) ||
+    (snippetOverlapCount >= 5 && documentSimilarity >= 18);
 
-  if (overlapRatio >= 0.7) {
-    similarity = Math.max(similarity, Math.round(overlapRatio * 100));
+  if (!hasStrongEvidence) {
+    return 0;
+  }
+
+  let similarity = Math.max(documentSimilarity, phraseSimilarity, snippetSimilarity);
+
+  if (snippetOverlapRatio >= 0.7) {
+    similarity = Math.max(similarity, Math.round(snippetOverlapRatio * 100));
+  } else if (snippetOverlapRatio >= 0.55) {
+    similarity = Math.max(similarity, Math.round(snippetOverlapRatio * 72));
   }
 
   if (exactPhraseFound) {
     similarity = Math.max(similarity, 86);
+  } else if (fragmentFound || pageFragmentFound) {
+    similarity = Math.max(similarity, 48);
   }
 
   return similarity;
@@ -177,7 +280,7 @@ export async function createReport(options: { text?: string; file?: Express.Mult
         inputCleaned,
       });
 
-      if (similarity < 24) {
+      if (similarity < 18) {
         continue;
       }
 
