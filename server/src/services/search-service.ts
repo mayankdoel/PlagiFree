@@ -23,6 +23,29 @@ export interface SearchResponse {
   warning?: string;
 }
 
+function tryDecodeBingTrackingUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== "www.bing.com" || !parsed.pathname.startsWith("/ck/")) {
+      return url;
+    }
+
+    const encodedTarget = parsed.searchParams.get("u");
+    if (!encodedTarget) {
+      return url;
+    }
+
+    const normalized = encodedTarget.startsWith("a1") ? encodedTarget.slice(2) : encodedTarget;
+    const base64 = normalized.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
+    const decoded = Buffer.from(padded, "base64").toString("utf-8");
+
+    return decoded.startsWith("http://") || decoded.startsWith("https://") ? decoded : url;
+  } catch {
+    return url;
+  }
+}
+
 async function fetchHtml(url: string) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
@@ -75,7 +98,7 @@ async function searchViaBingApi(phrase: string) {
 
   const searchUrl = new URL(endpoint);
   searchUrl.searchParams.set("q", `"${phrase}"`);
-  searchUrl.searchParams.set("count", "5");
+  searchUrl.searchParams.set("count", "10");
   searchUrl.searchParams.set("responseFilter", "Webpages");
   searchUrl.searchParams.set("textDecorations", "false");
   searchUrl.searchParams.set("textFormat", "Raw");
@@ -104,7 +127,7 @@ async function searchViaBingApi(phrase: string) {
 async function searchViaBingWeb(phrase: string): Promise<SearchResponse> {
   const searchUrl = new URL(bingHtmlEndpoint);
   searchUrl.searchParams.set("q", `"${phrase}"`);
-  searchUrl.searchParams.set("count", "5");
+  searchUrl.searchParams.set("count", "10");
 
   const html = await fetchHtml(searchUrl.toString());
   if (!html) {
@@ -119,7 +142,7 @@ async function searchViaBingWeb(phrase: string): Promise<SearchResponse> {
   const results: SearchResult[] = [];
 
   $("li.b_algo").each((_index, element) => {
-    if (results.length >= 5) {
+    if (results.length >= 10) {
       return false;
     }
 
@@ -134,7 +157,7 @@ async function searchViaBingWeb(phrase: string): Promise<SearchResponse> {
     const snippet = $(element).find(".b_caption p").first().text().trim();
 
     results.push({
-      url,
+      url: tryDecodeBingTrackingUrl(url),
       name: title || undefined,
       snippet: snippet || undefined,
     });
