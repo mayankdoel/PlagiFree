@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState, useTransition } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, FileText, LoaderCircle, Sparkles, Upload } from "lucide-react";
 
@@ -8,20 +8,87 @@ function acceptedFileType(fileName: string) {
   return /\.(txt|pdf|docx)$/i.test(fileName);
 }
 
+interface InputStats {
+  words: number;
+  characters: number;
+}
+
+interface FileStats extends InputStats {
+  filename: string;
+}
+
 export function CheckerForm() {
   const router = useRouter();
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [fileStats, setFileStats] = useState<FileStats | null>(null);
+  const [isLoadingFileStats, setIsLoadingFileStats] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const uploadRequestId = useRef(0);
 
-  const inputStats = useMemo(() => {
+  const textStats = useMemo<InputStats>(() => {
     const words = text.trim() ? text.trim().split(/\s+/).length : 0;
     return {
       words,
       characters: text.length,
     };
   }, [text]);
+
+  const activeStats = file && fileStats ? fileStats : textStats;
+  const activeSourceLabel = file ? "From uploaded file" : "From pasted text";
+
+  useEffect(() => {
+    if (!file || !acceptedFileType(file.name)) {
+      return;
+    }
+
+    const currentRequestId = uploadRequestId.current + 1;
+    uploadRequestId.current = currentRequestId;
+    setIsLoadingFileStats(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/file-stats", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? "Unable to read the uploaded file.");
+        }
+
+        const payload = (await response.json()) as FileStats;
+        if (uploadRequestId.current !== currentRequestId) {
+          return;
+        }
+
+        setFileStats({
+          filename: payload.filename,
+          words: payload.words,
+          characters: payload.characters,
+        });
+      } catch (fileError) {
+        if (uploadRequestId.current !== currentRequestId) {
+          return;
+        }
+
+        setFile(null);
+        setFileStats(null);
+        setError(
+          fileError instanceof Error ? fileError.message : "Unable to read the uploaded file.",
+        );
+      } finally {
+        if (uploadRequestId.current === currentRequestId) {
+          setIsLoadingFileStats(false);
+        }
+      }
+    })();
+  }, [file]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
@@ -34,6 +101,7 @@ export function CheckerForm() {
 
     setError(null);
     setFile(nextFile);
+    setFileStats(null);
   };
 
   const handleSubmit = async () => {
@@ -45,11 +113,10 @@ export function CheckerForm() {
     setError(null);
 
     const formData = new FormData();
-    if (text.trim()) {
-      formData.append("text", text);
-    }
     if (file) {
       formData.append("file", file);
+    } else if (text.trim()) {
+      formData.append("text", text);
     }
 
     startTransition(() => {
@@ -117,10 +184,15 @@ export function CheckerForm() {
           <input id="fileUpload" type="file" accept=".txt,.pdf,.docx" className="hidden" onChange={handleFileChange} />
           <div className="flex flex-wrap gap-3 text-xs text-slate-400">
             <span className="rounded-full border border-white/10 px-3 py-1">
-              {inputStats.words.toLocaleString()} words
+              {isLoadingFileStats ? "Counting words..." : `${activeStats.words.toLocaleString()} words`}
             </span>
             <span className="rounded-full border border-white/10 px-3 py-1">
-              {inputStats.characters.toLocaleString()} characters
+              {isLoadingFileStats
+                ? "Counting characters..."
+                : `${activeStats.characters.toLocaleString()} characters`}
+            </span>
+            <span className="rounded-full border border-white/10 px-3 py-1 text-slate-500">
+              {activeSourceLabel}
             </span>
           </div>
         </div>
@@ -128,13 +200,13 @@ export function CheckerForm() {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={isPending}
+          disabled={isPending || isLoadingFileStats}
           className="group inline-flex min-w-[210px] items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-accent-cyan via-sky-400 to-accent-mint px-6 py-4 text-base font-semibold text-slate-950 shadow-soft transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_42px_rgba(98,230,255,0.28)] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {isPending ? (
+          {isPending || isLoadingFileStats ? (
             <>
               <LoaderCircle className="h-5 w-5 animate-spin" />
-              Checking sources...
+              {isLoadingFileStats ? "Reading file..." : "Checking sources..."}
             </>
           ) : (
             <>
