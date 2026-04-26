@@ -1,14 +1,44 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { MongoClient } from "mongodb";
 
 import type { ReportRecord } from "../types/report";
 
 const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB_NAME ?? "plagifree";
+const diskCachePath = path.resolve(process.cwd(), "server", "data", "reports-cache.json");
 
 const memoryStore = new Map<string, ReportRecord>();
 const hashIndex = new Map<string, string>();
 
 let clientPromise: Promise<MongoClient | null> | null = null;
+let diskCacheLoaded = false;
+
+async function ensureDiskCacheLoaded() {
+  if (diskCacheLoaded) {
+    return;
+  }
+
+  try {
+    const raw = await readFile(diskCachePath, "utf-8");
+    const records = JSON.parse(raw) as ReportRecord[];
+
+    for (const record of records) {
+      memoryStore.set(record.id, record);
+      hashIndex.set(record.hash, record.id);
+    }
+  } catch {
+    // Ignore missing or invalid cache files and continue with an empty store.
+  } finally {
+    diskCacheLoaded = true;
+  }
+}
+
+async function persistDiskCache() {
+  await mkdir(path.dirname(diskCachePath), { recursive: true });
+  const payload = JSON.stringify([...memoryStore.values()], null, 2);
+  await writeFile(diskCachePath, payload, "utf-8");
+}
 
 async function connectMongo() {
   if (!mongoUri) {
@@ -38,6 +68,7 @@ export async function getCachedReport(hash: string) {
     return mongoCollection.findOne({ hash });
   }
 
+  await ensureDiskCacheLoaded();
   const reportId = hashIndex.get(hash);
   return reportId ? memoryStore.get(reportId) ?? null : null;
 }
@@ -51,8 +82,10 @@ export async function saveReport(report: ReportRecord) {
     return;
   }
 
+  await ensureDiskCacheLoaded();
   memoryStore.set(report.id, report);
   hashIndex.set(report.hash, report.id);
+  await persistDiskCache();
 }
 
 export async function getReportById(id: string) {
@@ -60,5 +93,7 @@ export async function getReportById(id: string) {
   if (mongoCollection) {
     return mongoCollection.findOne({ id });
   }
+
+  await ensureDiskCacheLoaded();
   return memoryStore.get(id) ?? null;
 }
