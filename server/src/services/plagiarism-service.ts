@@ -3,9 +3,10 @@ import crypto from "node:crypto";
 import mammoth from "mammoth";
 import pdfParse from "pdf-parse";
 
+import { extractPageText, searchPhrase } from "./search-service";
 import { getCachedReport, getReportById, saveReport } from "./storage";
-import type { ReportRecord } from "../types/report";
-import { normalizeWhitespace } from "../utils/text";
+import type { ReportRecord, SourceMatch } from "../types/report";
+import { buildNGrams, cleanedText, cosineSimilarity, normalizeWhitespace, tokenize } from "../utils/text";
 
 async function extractTextFromFile(file: Express.Multer.File) {
   const extension = file.originalname.split(".").pop()?.toLowerCase();
@@ -31,6 +32,29 @@ function hashText(text: string) {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
+function calculateScore(sourceText: string, matches: SourceMatch[]) {
+  if (!matches.length) {
+    return 0;
+  }
+
+  const lowerText = sourceText.toLowerCase();
+  const coveredCharacters = new Set<number>();
+
+  for (const match of matches) {
+    const phrase = match.matchedText.toLowerCase();
+    let index = lowerText.indexOf(phrase);
+
+    while (index !== -1) {
+      for (let offset = index; offset < index + phrase.length; offset += 1) {
+        coveredCharacters.add(offset);
+      }
+      index = lowerText.indexOf(phrase, index + phrase.length);
+    }
+  }
+
+  return Math.min(100, Math.round((coveredCharacters.size / Math.max(sourceText.length, 1)) * 100));
+}
+
 export async function createReport(options: { text?: string; file?: Express.Multer.File | null }) {
   const incomingText = options.file ? await extractTextFromFile(options.file) : options.text ?? "";
   const normalizedText = normalizeWhitespace(incomingText);
@@ -48,13 +72,39 @@ export async function createReport(options: { text?: string; file?: Express.Mult
     };
   }
 
+  const inputCleaned = cleanedText(normalizedText);
+  const phrases = buildNGrams(tokenize(normalizedText));
+  const matches: SourceMatch[] = [];
+
+  for (const phrase of phrases) {
+    const searchResults = await searchPhrase(phrase);
+
+    for (const searchResult of searchResults) {
+      const pageText = await extractPageText(searchResult.url);
+      const comparisonText = pageText || searchResult.snippet || "";
+      const similarity = Math.round(cosineSimilarity(inputCleaned, comparisonText) * 100);
+
+      if (similarity < 10) {
+        continue;
+      }
+
+      matches.push({
+        url: searchResult.url,
+        matchedText: phrase,
+        similarity,
+        title: searchResult.name,
+        snippet: searchResult.snippet,
+      });
+    }
+  }
+
   const report: ReportRecord = {
     id: crypto.randomUUID(),
     hash,
     text: normalizedText,
-    score: 0,
+    score: calculateScore(normalizedText, matches),
     severity: "original",
-    matches: [],
+    matches,
     createdAt: new Date().toISOString(),
     cached: false,
     source: options.file
