@@ -3,10 +3,17 @@ import crypto from "node:crypto";
 import mammoth from "mammoth";
 import pdfParse from "pdf-parse";
 
+import { getReportById, getCachedReport, saveReport } from "./storage";
 import { extractPageText, searchPhrase } from "./search-service";
-import { getCachedReport, getReportById, saveReport } from "./storage";
 import type { ReportRecord, SourceMatch } from "../types/report";
-import { buildNGrams, cleanedText, cosineSimilarity, normalizeWhitespace, tokenize } from "../utils/text";
+import {
+  buildNGrams,
+  cleanedText,
+  cosineSimilarity,
+  normalizeWhitespace,
+  severityFromScore,
+  tokenize,
+} from "../utils/text";
 
 async function extractTextFromFile(file: Express.Multer.File) {
   const extension = file.originalname.split(".").pop()?.toLowerCase();
@@ -32,6 +39,20 @@ function hashText(text: string) {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
+function deduplicateMatches(matches: SourceMatch[]) {
+  const unique = new Map<string, SourceMatch>();
+
+  for (const match of matches) {
+    const key = `${match.url}:${match.matchedText}`;
+    const existing = unique.get(key);
+    if (!existing || match.similarity > existing.similarity) {
+      unique.set(key, match);
+    }
+  }
+
+  return [...unique.values()].sort((left, right) => right.similarity - left.similarity).slice(0, 20);
+}
+
 function calculateScore(sourceText: string, matches: SourceMatch[]) {
   if (!matches.length) {
     return 0;
@@ -52,7 +73,9 @@ function calculateScore(sourceText: string, matches: SourceMatch[]) {
     }
   }
 
-  return Math.min(100, Math.round((coveredCharacters.size / Math.max(sourceText.length, 1)) * 100));
+  const coverage = coveredCharacters.size / Math.max(sourceText.length, 1);
+  const topSimilarity = matches.slice(0, 5).reduce((total, match) => total + match.similarity, 0) / Math.min(matches.length, 5);
+  return Math.min(100, Math.round(coverage * 65 + topSimilarity * 0.35));
 }
 
 export async function createReport(options: { text?: string; file?: Express.Multer.File | null }) {
@@ -63,18 +86,20 @@ export async function createReport(options: { text?: string; file?: Express.Mult
     throw new Error("No readable text was provided. Paste content or upload a supported file.");
   }
 
-  const hash = hashText(normalizedText);
-  const cached = await getCachedReport(hash);
-  if (cached) {
+  const contentHash = hashText(normalizedText);
+  const cachedReport = await getCachedReport(contentHash);
+
+  if (cachedReport) {
     return {
-      ...cached,
+      ...cachedReport,
       cached: true,
     };
   }
 
+  const tokens = tokenize(normalizedText);
+  const phrases = buildNGrams(tokens);
   const inputCleaned = cleanedText(normalizedText);
-  const phrases = buildNGrams(tokenize(normalizedText));
-  const matches: SourceMatch[] = [];
+  const collectedMatches: SourceMatch[] = [];
 
   for (const phrase of phrases) {
     const searchResults = await searchPhrase(phrase);
@@ -84,11 +109,11 @@ export async function createReport(options: { text?: string; file?: Express.Mult
       const comparisonText = pageText || searchResult.snippet || "";
       const similarity = Math.round(cosineSimilarity(inputCleaned, comparisonText) * 100);
 
-      if (similarity < 10) {
+      if (similarity < 12) {
         continue;
       }
 
-      matches.push({
+      collectedMatches.push({
         url: searchResult.url,
         matchedText: phrase,
         similarity,
@@ -98,12 +123,15 @@ export async function createReport(options: { text?: string; file?: Express.Mult
     }
   }
 
+  const matches = deduplicateMatches(collectedMatches);
+  const score = calculateScore(normalizedText, matches);
+
   const report: ReportRecord = {
     id: crypto.randomUUID(),
-    hash,
+    hash: contentHash,
     text: normalizedText,
-    score: calculateScore(normalizedText, matches),
-    severity: "original",
+    score,
+    severity: severityFromScore(score),
     matches,
     createdAt: new Date().toISOString(),
     cached: false,
