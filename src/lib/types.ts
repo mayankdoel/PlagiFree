@@ -8,6 +8,13 @@ export interface SourceMatch {
   title?: string;
 }
 
+export interface AnalysisMeta {
+  searchProvider: "bing-api" | "bing-web" | "unavailable";
+  searchedPhrases: string[];
+  sourceLookups: number;
+  warning?: string;
+}
+
 export interface PlagiarismReport {
   id: string;
   score: number;
@@ -16,6 +23,7 @@ export interface PlagiarismReport {
   matches: SourceMatch[];
   createdAt: string;
   cached: boolean;
+  analysis: AnalysisMeta;
   source?: {
     filename?: string;
     inputType: "text" | "file";

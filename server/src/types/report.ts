@@ -6,6 +6,13 @@ export interface SourceMatch {
   snippet?: string;
 }
 
+export interface AnalysisMeta {
+  searchProvider: "bing-api" | "bing-web" | "unavailable";
+  searchedPhrases: string[];
+  sourceLookups: number;
+  warning?: string;
+}
+
 export interface ReportRecord {
   id: string;
   hash: string;
@@ -15,6 +22,7 @@ export interface ReportRecord {
   matches: SourceMatch[];
   createdAt: string;
   cached: boolean;
+  analysis: AnalysisMeta;
   source: {
     inputType: "text" | "file";
     filename?: string;
