@@ -3,12 +3,13 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 
+import { DEFAULT_API_PORT } from "./config";
 import { checkRouter } from "./routes/check";
 import { fileStatsRouter } from "./routes/file-stats";
 import { reportRouter } from "./routes/report";
 
 const app = express();
-const port = Number(process.env.PORT ?? 8080);
+const port = Number(process.env.PORT ?? DEFAULT_API_PORT);
 const allowedOrigin = process.env.ALLOWED_ORIGIN ?? "http://localhost:3000";
 
 app.disable("x-powered-by");
