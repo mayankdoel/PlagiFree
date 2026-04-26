@@ -9,16 +9,36 @@ const STOP_WORDS = new Set([
   "by",
   "for",
   "from",
+  "has",
+  "he",
   "in",
   "is",
   "it",
+  "its",
   "of",
   "on",
-  "or",
   "that",
   "the",
   "to",
+  "was",
+  "were",
+  "will",
   "with",
+  "this",
+  "these",
+  "those",
+  "or",
+  "if",
+  "but",
+  "into",
+  "their",
+  "there",
+  "than",
+  "them",
+  "they",
+  "we",
+  "you",
+  "your",
 ]);
 
 export function normalizeWhitespace(text: string) {
@@ -52,8 +72,14 @@ export function buildNGrams(tokens: string[], min = 5, max = 8, limit = 12) {
   }
 
   return [...counts.entries()]
-    .sort((left, right) => right[1] - left[1])
+    .sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1];
+      }
+      return right[0].length - left[0].length;
+    })
     .map(([phrase]) => phrase)
+    .filter((phrase, index, phrases) => phrases.findIndex((item) => item.includes(phrase)) === index)
     .slice(0, limit);
 }
 
@@ -95,3 +121,14 @@ export function cosineSimilarity(left: string, right: string) {
 
   return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
 }
+
+export function severityFromScore(score: number): "original" | "moderate" | "high" {
+  if (score <= 20) {
+    return "original";
+  }
+  if (score <= 50) {
+    return "moderate";
+  }
+  return "high";
+}
+
