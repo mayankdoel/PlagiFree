@@ -143,7 +143,10 @@ export async function createReport(options: { text?: string; file?: Express.Mult
   const collectedMatches: SourceMatch[] = [];
   const providerOrder = new Set<ReportRecord["analysis"]["searchProvider"]>();
   let sourceLookups = 0;
-  let analysisWarning: string | undefined;
+  let analysisWarning: string | undefined =
+    phrases.length === 0
+      ? "The extracted text did not contain enough high-signal phrases to run a reliable external comparison."
+      : undefined;
 
   for (const phrase of phrases) {
     const searchResponse = await searchPhrase(phrase);
@@ -189,6 +192,10 @@ export async function createReport(options: { text?: string; file?: Express.Mult
   const warning =
     matches.length === 0 && searchProvider === "unavailable"
       ? "External source search was unavailable during this scan, so 0% does not guarantee originality."
+      : matches.length === 0 && sourceLookups > 0
+        ? "No strong external matches were found for the best phrases extracted from this document."
+        : matches.length === 0 && phrases.length === 0
+          ? "This file did not yield enough searchable phrases for a dependable plagiarism scan."
       : analysisWarning;
 
   const report: ReportRecord = {
