@@ -23,6 +23,7 @@ export function CheckerForm() {
   const [file, setFile] = useState<File | null>(null);
   const [fileStats, setFileStats] = useState<FileStats | null>(null);
   const [isLoadingFileStats, setIsLoadingFileStats] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const uploadRequestId = useRef(0);
@@ -51,6 +52,7 @@ export function CheckerForm() {
     startTransition(() => {
       void (async () => {
         try {
+          setIsSubmitting(true);
           const response = await fetch("/api/check", {
             method: "POST",
             body: formData,
@@ -69,6 +71,8 @@ export function CheckerForm() {
               ? submissionError.message
               : "Something went wrong while checking the text.",
           );
+        } finally {
+          setIsSubmitting(false);
         }
       })();
     });
@@ -219,10 +223,10 @@ export function CheckerForm() {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={isPending}
+          disabled={isPending || isSubmitting}
           className="group inline-flex min-w-[210px] items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-accent-cyan via-sky-400 to-accent-mint px-6 py-4 text-base font-semibold text-slate-950 shadow-soft transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_42px_rgba(98,230,255,0.28)] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {isPending || isLoadingFileStats ? (
+          {isPending || isLoadingFileStats || isSubmitting ? (
             <>
               <LoaderCircle className="h-5 w-5 animate-spin" />
               {isLoadingFileStats ? "Preparing file..." : "Checking sources..."}
@@ -235,6 +239,12 @@ export function CheckerForm() {
           )}
         </button>
       </div>
+
+      {isSubmitting && !error ? (
+        <p className="mt-4 text-sm text-accent-cyan/90">
+          Running plagiarism scan and collecting source matches...
+        </p>
+      ) : null}
 
       {error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}
     </div>
