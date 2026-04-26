@@ -161,6 +161,11 @@ export function ResultsClient({ reportId }: { reportId: string }) {
             <div className={`inline-flex rounded-full border px-3 py-1 text-sm ${severity.badge}`}>
               {severity.label}
             </div>
+            <p className="text-sm leading-6 text-slate-400">
+              {report.matches.length > 0
+                ? "This percentage reflects the strongest matched phrases and page similarity signals we found."
+                : "This percentage is currently 0% because the scan did not confirm any strong external matches."}
+            </p>
             <div className="grid gap-3 text-sm text-slate-300">
               <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
                 <span className="flex items-center gap-2">
