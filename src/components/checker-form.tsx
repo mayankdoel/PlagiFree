@@ -1,16 +1,19 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
-import { FileText, Upload } from "lucide-react";
+import { ChangeEvent, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, FileText, LoaderCircle, Sparkles, Upload } from "lucide-react";
 
 function acceptedFileType(fileName: string) {
   return /\.(txt|pdf|docx)$/i.test(fileName);
 }
 
 export function CheckerForm() {
+  const router = useRouter();
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const inputStats = useMemo(() => {
     const words = text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -33,9 +36,56 @@ export function CheckerForm() {
     setFile(nextFile);
   };
 
+  const handleSubmit = async () => {
+    if (!text.trim() && !file) {
+      setError("Paste text or upload a supported file to start checking.");
+      return;
+    }
+
+    setError(null);
+
+    const formData = new FormData();
+    if (text.trim()) {
+      formData.append("text", text);
+    }
+    if (file) {
+      formData.append("file", file);
+    }
+
+    startTransition(() => {
+      void (async () => {
+        try {
+          const response = await fetch("/api/check", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error ?? "Unable to complete plagiarism check.");
+          }
+
+          const payload = (await response.json()) as { id: string };
+          router.push(`/results/${payload.id}`);
+        } catch (submissionError) {
+          setError(
+            submissionError instanceof Error
+              ? submissionError.message
+              : "Something went wrong while checking the text.",
+          );
+        }
+      })();
+    });
+  };
+
   return (
-    <div className="glass-panel p-6 sm:p-8">
+    <div className="glass-panel relative overflow-hidden p-6 sm:p-8">
+      <div className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-accent-cyan/60 to-transparent" />
       <div className="mb-5 flex flex-wrap items-center gap-3 text-sm text-slate-300">
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1">
+          <Sparkles className="h-4 w-4 text-accent-mint" />
+          No signup, no limits
+        </span>
         <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1">
           <FileText className="h-4 w-4 text-accent-cyan" />
           Supports TXT, PDF, DOCX
@@ -49,17 +99,17 @@ export function CheckerForm() {
         id="sourceText"
         value={text}
         onChange={(event) => setText(event.target.value)}
-        placeholder="Paste essays, reports, blogs, assignments, research notes, or entire documents here."
-        className="min-h-[280px] w-full rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 text-base text-slate-100 outline-none placeholder:text-slate-500"
+        placeholder="Paste essays, reports, blogs, assignments, research notes, or entire documents here. There is no word-limit gate in the UI."
+        className="min-h-[280px] w-full rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 text-base text-slate-100 outline-none transition duration-200 placeholder:text-slate-500 hover:border-accent-cyan/40 focus:border-accent-cyan/70 focus:ring-2 focus:ring-accent-cyan/20"
       />
 
       <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-3">
           <label
-            className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-4 py-3 text-sm text-slate-300"
+            className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-4 py-3 text-sm text-slate-300 transition duration-200 hover:border-accent-cyan/50 hover:bg-white/[0.06]"
             htmlFor="fileUpload"
           >
-            <span className="rounded-xl border border-white/10 bg-base-900 p-2">
+            <span className="rounded-xl border border-white/10 bg-base-900 p-2 transition duration-200 group-hover:border-accent-cyan/50 group-hover:text-accent-cyan">
               <Upload className="h-4 w-4" />
             </span>
             <span>{file ? file.name : "Upload a .txt, .pdf, or .docx file"}</span>
@@ -77,9 +127,21 @@ export function CheckerForm() {
 
         <button
           type="button"
-          className="inline-flex min-w-[210px] items-center justify-center rounded-2xl bg-gradient-to-r from-accent-cyan via-sky-400 to-accent-mint px-6 py-4 text-base font-semibold text-slate-950 shadow-soft"
+          onClick={handleSubmit}
+          disabled={isPending}
+          className="group inline-flex min-w-[210px] items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-accent-cyan via-sky-400 to-accent-mint px-6 py-4 text-base font-semibold text-slate-950 shadow-soft transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_42px_rgba(98,230,255,0.28)] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          Check Now
+          {isPending ? (
+            <>
+              <LoaderCircle className="h-5 w-5 animate-spin" />
+              Checking sources...
+            </>
+          ) : (
+            <>
+              Check Now
+              <ArrowRight className="h-5 w-5 transition duration-200 group-hover:translate-x-0.5" />
+            </>
+          )}
         </button>
       </div>
 
