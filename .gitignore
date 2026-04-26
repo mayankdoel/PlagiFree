@@ -5,6 +5,7 @@ dist
 .env
 .env.local
 coverage
+server/data
 *.tsbuildinfo
 *.log
 npm-debug.log*
