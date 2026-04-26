@@ -15,7 +15,7 @@ PlagiFree is a no-login, no-signup plagiarism checker built with Next.js, Tailwi
 
 1. Copy `.env.example` to `.env`.
 2. Set `BING_API_KEY`, `MONGODB_URI`, and `REDIS_URL`.
-   The local API defaults to port `8081` so it does not collide with tools that already use `8080`.
+   The local API defaults to port `5000`.
 3. Install dependencies:
 
 ```bash
