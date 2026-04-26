@@ -17,11 +17,15 @@ interface BingResponse {
 }
 
 async function fetchHtml(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+
   try {
     const response = await fetch(url, {
       headers: {
         "User-Agent": "PlagiFreeBot/1.0 (+https://plagifree.local)",
       },
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -31,6 +35,8 @@ async function fetchHtml(url: string) {
     return await response.text();
   } catch {
     return "";
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -63,7 +69,7 @@ export async function searchPhrase(phrase: string) {
 
   const apiKey = process.env.BING_API_KEY;
   if (!apiKey) {
-    return [] as BingSearchResult[];
+    return [];
   }
 
   const searchUrl = new URL(endpoint);
@@ -80,7 +86,7 @@ export async function searchPhrase(phrase: string) {
   });
 
   if (!response.ok) {
-    return [] as BingSearchResult[];
+    return [];
   }
 
   const payload = (await response.json()) as BingResponse;
