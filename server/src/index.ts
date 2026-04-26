@@ -4,6 +4,7 @@ import cors from "cors";
 import express from "express";
 
 import { checkRouter } from "./routes/check";
+import { fileStatsRouter } from "./routes/file-stats";
 import { reportRouter } from "./routes/report";
 
 const app = express();
@@ -25,6 +26,7 @@ app.get("/health", (_request, response) => {
 });
 
 app.use("/api/check", checkRouter);
+app.use("/api/file-stats", fileStatsRouter);
 app.use("/api/report", reportRouter);
 
 app.listen(port, () => {

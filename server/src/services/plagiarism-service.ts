@@ -1,8 +1,6 @@
 import crypto from "node:crypto";
 
-import mammoth from "mammoth";
-import pdfParse from "pdf-parse";
-
+import { buildTextStats, extractTextFromFile } from "./document-service";
 import { getReportById, getCachedReport, saveReport } from "./storage";
 import { extractPageText, searchPhrase } from "./search-service";
 import type { ReportRecord, SourceMatch } from "../types/report";
@@ -10,30 +8,9 @@ import {
   buildNGrams,
   cleanedText,
   cosineSimilarity,
-  normalizeWhitespace,
   severityFromScore,
   tokenize,
 } from "../utils/text";
-
-async function extractTextFromFile(file: Express.Multer.File) {
-  const extension = file.originalname.split(".").pop()?.toLowerCase();
-
-  if (extension === "txt") {
-    return file.buffer.toString("utf-8");
-  }
-
-  if (extension === "docx") {
-    const result = await mammoth.extractRawText({ buffer: file.buffer });
-    return result.value;
-  }
-
-  if (extension === "pdf") {
-    const result = await pdfParse(file.buffer);
-    return result.text;
-  }
-
-  throw new Error("Unsupported file type. Upload TXT, PDF, or DOCX files only.");
-}
 
 function hashText(text: string) {
   return crypto.createHash("sha256").update(text).digest("hex");
@@ -80,7 +57,7 @@ function calculateScore(sourceText: string, matches: SourceMatch[]) {
 
 export async function createReport(options: { text?: string; file?: Express.Multer.File | null }) {
   const incomingText = options.file ? await extractTextFromFile(options.file) : options.text ?? "";
-  const normalizedText = normalizeWhitespace(incomingText);
+  const { text: normalizedText } = buildTextStats(incomingText);
 
   if (!normalizedText) {
     throw new Error("No readable text was provided. Paste content or upload a supported file.");
