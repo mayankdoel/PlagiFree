@@ -143,6 +143,7 @@ export async function createReport(options: { text?: string; file?: Express.Mult
   const collectedMatches: SourceMatch[] = [];
   const providerOrder = new Set<ReportRecord["analysis"]["searchProvider"]>();
   let sourceLookups = 0;
+  let unavailableSearchCount = 0;
   let analysisWarning: string | undefined =
     phrases.length === 0
       ? "The extracted text did not contain enough high-signal phrases to run a reliable external comparison."
@@ -154,6 +155,14 @@ export async function createReport(options: { text?: string; file?: Express.Mult
 
     if (searchResponse.warning && !analysisWarning) {
       analysisWarning = searchResponse.warning;
+    }
+
+    if (searchResponse.provider === "unavailable") {
+      unavailableSearchCount += 1;
+      if (unavailableSearchCount >= 2 && sourceLookups === 0) {
+        break;
+      }
+      continue;
     }
 
     for (const searchResult of searchResponse.results) {
