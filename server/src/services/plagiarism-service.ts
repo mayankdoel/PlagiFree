@@ -5,10 +5,11 @@ import { getReportById, getCachedReport, saveReport } from "./storage";
 import { extractPageText, searchPhrase } from "./search-service";
 import type { ReportRecord, SourceMatch } from "../types/report";
 import {
-  buildNGrams,
   cleanedText,
   cosineSimilarity,
+  cleanTokens,
   severityFromScore,
+  selectSearchPhrases,
   tokenize,
 } from "../utils/text";
 
@@ -55,6 +56,70 @@ function calculateScore(sourceText: string, matches: SourceMatch[]) {
   return Math.min(100, Math.round(coverage * 65 + topSimilarity * 0.35));
 }
 
+function containsExactPhrase(content: string, phrase: string) {
+  return content.toLowerCase().includes(phrase.toLowerCase());
+}
+
+function tokenOverlapRatio(phrase: string, content: string) {
+  const phraseTokens = cleanTokens(tokenize(phrase));
+  if (!phraseTokens.length) {
+    return 0;
+  }
+
+  const contentTokens = new Set(cleanTokens(tokenize(content)));
+  const overlapCount = phraseTokens.filter((token) => contentTokens.has(token)).length;
+  return overlapCount / phraseTokens.length;
+}
+
+function calculateMatchSimilarity(options: {
+  phrase: string;
+  pageText: string;
+  snippet: string;
+  title: string;
+  inputText: string;
+  inputCleaned: string;
+}) {
+  const phraseContext = [options.title, options.snippet, options.pageText.slice(0, 4000)]
+    .filter(Boolean)
+    .join(" ");
+  const phraseSimilarity = Math.round(cosineSimilarity(options.phrase, phraseContext) * 100);
+  const documentSimilarity = options.pageText
+    ? Math.round(cosineSimilarity(options.inputCleaned, options.pageText) * 100)
+    : 0;
+  const overlapRatio = tokenOverlapRatio(options.phrase, phraseContext);
+  const phraseAppearsInDocument = containsExactPhrase(options.inputText, options.phrase);
+  const exactPhraseFound =
+    containsExactPhrase(phraseContext, options.phrase) && phraseAppearsInDocument;
+
+  let similarity = Math.max(documentSimilarity, phraseSimilarity);
+
+  if (overlapRatio >= 0.7) {
+    similarity = Math.max(similarity, Math.round(overlapRatio * 100));
+  }
+
+  if (exactPhraseFound) {
+    similarity = Math.max(similarity, 86);
+  }
+
+  return similarity;
+}
+
+function ensureAnalysisMeta(report: ReportRecord): ReportRecord {
+  if (report.analysis) {
+    return report;
+  }
+
+  return {
+    ...report,
+    analysis: {
+      searchProvider: "unavailable",
+      searchedPhrases: [],
+      sourceLookups: 0,
+      warning: "This report was created before search diagnostics were added.",
+    },
+  };
+}
+
 export async function createReport(options: { text?: string; file?: Express.Multer.File | null }) {
   const incomingText = options.file ? await extractTextFromFile(options.file) : options.text ?? "";
   const { text: normalizedText } = buildTextStats(incomingText);
@@ -68,25 +133,39 @@ export async function createReport(options: { text?: string; file?: Express.Mult
 
   if (cachedReport) {
     return {
-      ...cachedReport,
+      ...ensureAnalysisMeta(cachedReport),
       cached: true,
     };
   }
 
-  const tokens = tokenize(normalizedText);
-  const phrases = buildNGrams(tokens);
+  const phrases = selectSearchPhrases(normalizedText);
   const inputCleaned = cleanedText(normalizedText);
   const collectedMatches: SourceMatch[] = [];
+  const providerOrder = new Set<ReportRecord["analysis"]["searchProvider"]>();
+  let sourceLookups = 0;
+  let analysisWarning: string | undefined;
 
   for (const phrase of phrases) {
-    const searchResults = await searchPhrase(phrase);
+    const searchResponse = await searchPhrase(phrase);
+    providerOrder.add(searchResponse.provider);
 
-    for (const searchResult of searchResults) {
+    if (searchResponse.warning && !analysisWarning) {
+      analysisWarning = searchResponse.warning;
+    }
+
+    for (const searchResult of searchResponse.results) {
+      sourceLookups += 1;
       const pageText = await extractPageText(searchResult.url);
-      const comparisonText = pageText || searchResult.snippet || "";
-      const similarity = Math.round(cosineSimilarity(inputCleaned, comparisonText) * 100);
+      const similarity = calculateMatchSimilarity({
+        phrase,
+        pageText,
+        snippet: searchResult.snippet ?? "",
+        title: searchResult.name ?? "",
+        inputText: normalizedText,
+        inputCleaned,
+      });
 
-      if (similarity < 12) {
+      if (similarity < 24) {
         continue;
       }
 
@@ -102,6 +181,15 @@ export async function createReport(options: { text?: string; file?: Express.Mult
 
   const matches = deduplicateMatches(collectedMatches);
   const score = calculateScore(normalizedText, matches);
+  const searchProvider = providerOrder.has("bing-api")
+    ? "bing-api"
+    : providerOrder.has("bing-web")
+      ? "bing-web"
+      : "unavailable";
+  const warning =
+    matches.length === 0 && searchProvider === "unavailable"
+      ? "External source search was unavailable during this scan, so 0% does not guarantee originality."
+      : analysisWarning;
 
   const report: ReportRecord = {
     id: crypto.randomUUID(),
@@ -112,6 +200,12 @@ export async function createReport(options: { text?: string; file?: Express.Mult
     matches,
     createdAt: new Date().toISOString(),
     cached: false,
+    analysis: {
+      searchProvider,
+      searchedPhrases: phrases,
+      sourceLookups,
+      warning,
+    },
     source: options.file
       ? {
           inputType: "file",
@@ -127,5 +221,6 @@ export async function createReport(options: { text?: string; file?: Express.Mult
 }
 
 export async function loadReport(id: string) {
-  return getReportById(id);
+  const report = await getReportById(id);
+  return report ? ensureAnalysisMeta(report) : null;
 }
