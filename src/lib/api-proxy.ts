@@ -1,3 +1,5 @@
+import { DEFAULT_API_ORIGIN } from "@/lib/runtime-config";
+
 function copyProxyHeaders(response: Response) {
   const headers = new Headers();
   const contentType = response.headers.get("content-type");
@@ -15,7 +17,7 @@ function copyProxyHeaders(response: Response) {
 }
 
 export function getInternalApiUrl() {
-  return process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+  return process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_ORIGIN;
 }
 
 export async function proxyJsonRequest(url: string, init: RequestInit) {
