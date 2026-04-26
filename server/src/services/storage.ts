@@ -46,6 +46,8 @@ export async function saveReport(report: ReportRecord) {
   const mongoCollection = await collection();
   if (mongoCollection) {
     await mongoCollection.updateOne({ id: report.id }, { $set: report }, { upsert: true });
+    await mongoCollection.createIndex({ id: 1 }, { unique: true });
+    await mongoCollection.createIndex({ hash: 1 });
     return;
   }
 
