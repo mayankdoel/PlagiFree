@@ -39,3 +39,4 @@ npm run dev
 - There is no authentication, session storage, cookie flow, or account model anywhere in the app.
 - If MongoDB or Redis are unavailable, the app falls back to in-memory caching so development can still continue.
 - Bing Search API credentials are required for live source discovery in the detection pipeline.
+- If the Bing API is not configured or temporarily unavailable, the app now attempts a Bing web-search fallback and surfaces a warning when an external scan could not be completed.
