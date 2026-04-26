@@ -111,6 +111,8 @@ export function ResultsClient({ reportId }: { reportId: string }) {
       : report.analysis?.searchProvider === "bing-web"
         ? "Bing web fallback"
         : "Search unavailable";
+  const searchedPhrases = report.analysis?.searchedPhrases ?? [];
+  const showNoMatchState = report.matches.length === 0;
 
   return (
     <div className="space-y-8">
@@ -193,6 +195,40 @@ export function ResultsClient({ reportId }: { reportId: string }) {
         </article>
 
         <div className="space-y-6">
+          {showNoMatchState ? (
+            <article className="glass-panel p-6">
+              <h2 className="mb-3 text-2xl font-semibold text-white">No strong web matches found</h2>
+              <p className="text-sm leading-7 text-slate-300">
+                This scan did not find convincing external matches for the strongest phrases extracted
+                from your document. That can mean the content is original, or that the available
+                search provider could not find enough comparable source text.
+              </p>
+              <div className="mt-5 grid gap-3 text-sm text-slate-300 md:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  Search provider: <strong className="text-white">{providerLabel}</strong>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  Source lookups: <strong className="text-white">{report.analysis?.sourceLookups ?? 0}</strong>
+                </div>
+              </div>
+              {searchedPhrases.length ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs uppercase tracking-[0.24em] text-slate-500">Searched phrases</p>
+                  <div className="flex flex-wrap gap-2">
+                    {searchedPhrases.slice(0, 8).map((phrase) => (
+                      <span
+                        key={phrase}
+                        className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-slate-300"
+                      >
+                        {phrase}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </article>
+          ) : null}
+
           <article className="glass-panel p-6">
             <h2 className="mb-4 text-2xl font-semibold text-white">Highlighted input</h2>
             <div className="max-h-[420px] overflow-auto rounded-2xl border border-white/10 bg-slate-950/65 p-5 text-[15px] leading-8 text-slate-200">
