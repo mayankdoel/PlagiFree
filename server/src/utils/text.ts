@@ -61,6 +61,10 @@ export function cleanedText(text: string) {
   return cleanTokens(tokenize(text)).join(" ");
 }
 
+function rawWordTokens(text: string) {
+  return normalizeWhitespace(text).match(/[\p{L}\p{N}][\p{L}\p{N}'’/-]*/gu) ?? [];
+}
+
 function isNumericToken(token: string) {
   return /^\d+$/.test(token);
 }
@@ -91,6 +95,118 @@ function phraseQualityScore(phrase: string) {
   return uniqueCount * 4 + longTokenCount * 2 + alphabeticCount - repeatedTokenPenalty * 3;
 }
 
+function rawPhraseQualityScore(tokens: string[], occurrences: number, firstIndex: number) {
+  const loweredTokens = tokens.map((token) => token.toLowerCase());
+  const uniqueCount = new Set(loweredTokens).size;
+  const searchableCount = loweredTokens.filter(isSearchableToken).length;
+  const stopWordCount = loweredTokens.filter((token) => STOP_WORDS.has(token)).length;
+  const longTokenCount = loweredTokens.filter((token) => token.length > 5).length;
+  const titleCaseCount = tokens.filter((token) => /^[A-Z][\p{L}\p{N}'’/-]*$/u.test(token)).length;
+  const allCapsCount = tokens.filter((token) => token.length > 1 && token === token.toUpperCase() && /[A-Z]/.test(token)).length;
+  const repeatedBonus = Math.min(occurrences, 4) * 8;
+  const earlyBonus = firstIndex < 80 ? 10 : firstIndex < 220 ? 5 : 0;
+
+  return (
+    searchableCount * 5 +
+    uniqueCount * 3 +
+    longTokenCount * 2 +
+    titleCaseCount +
+    allCapsCount * 2 +
+    repeatedBonus +
+    earlyBonus -
+    stopWordCount
+  );
+}
+
+function buildExactSearchPhrases(text: string, limit: number) {
+  const tokens = rawWordTokens(text);
+
+  if (tokens.length < 4) {
+    return [];
+  }
+
+  const candidates = new Map<
+    string,
+    {
+      phrase: string;
+      count: number;
+      firstIndex: number;
+      searchableCount: number;
+      uniqueCount: number;
+      stopWordRatio: number;
+    }
+  >();
+
+  for (let size = 4; size <= 9; size += 1) {
+    for (let index = 0; index <= tokens.length - size; index += 1) {
+      const phraseTokens = tokens.slice(index, index + size);
+      const loweredTokens = phraseTokens.map((token) => token.toLowerCase());
+      const searchableCount = loweredTokens.filter(isSearchableToken).length;
+
+      if (searchableCount < 4) {
+        continue;
+      }
+
+      const uniqueCount = new Set(loweredTokens).size;
+      if (uniqueCount < 4) {
+        continue;
+      }
+
+      const stopWordCount = loweredTokens.filter((token) => STOP_WORDS.has(token)).length;
+      const stopWordRatio = stopWordCount / phraseTokens.length;
+      if (stopWordRatio > 0.55) {
+        continue;
+      }
+
+      const phrase = phraseTokens.join(" ");
+      const key = phrase.toLowerCase();
+      const existing = candidates.get(key);
+
+      if (existing) {
+        existing.count += 1;
+        continue;
+      }
+
+      candidates.set(key, {
+        phrase,
+        count: 1,
+        firstIndex: index,
+        searchableCount,
+        uniqueCount,
+        stopWordRatio,
+      });
+    }
+  }
+
+  return [...candidates.values()]
+    .map((candidate) => ({
+      phrase: candidate.phrase,
+      score:
+        rawPhraseQualityScore(candidate.phrase.split(" "), candidate.count, candidate.firstIndex) +
+        candidate.uniqueCount * 2 +
+        candidate.searchableCount * 2 -
+        Math.round(candidate.stopWordRatio * 8),
+      count: candidate.count,
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+
+      return right.phrase.length - left.phrase.length;
+    })
+    .map((candidate) => candidate.phrase)
+    .filter((phrase, index, phrases) => {
+      const lowered = phrase.toLowerCase();
+      return phrases.findIndex((item) => item.toLowerCase().includes(lowered)) === index;
+    })
+    .slice(0, limit);
+}
+
 export function buildNGrams(tokens: string[], min = 5, max = 8, limit = 12) {
   const counts = new Map<string, number>();
 
@@ -114,10 +230,9 @@ export function buildNGrams(tokens: string[], min = 5, max = 8, limit = 12) {
 }
 
 export function selectSearchPhrases(text: string, limit = 12) {
+  const exactCandidates = buildExactSearchPhrases(text, limit);
   const filteredTokens = cleanTokens(tokenize(text)).filter(isSearchableToken);
-  const candidates = buildNGrams(filteredTokens, 5, 8, limit * 5);
-
-  return candidates
+  const fallbackCandidates = buildNGrams(filteredTokens, 5, 8, limit * 5)
     .map((phrase) => ({
       phrase,
       score: phraseQualityScore(phrase),
@@ -131,8 +246,13 @@ export function selectSearchPhrases(text: string, limit = 12) {
 
       return right.phrase.length - left.phrase.length;
     })
-    .map((candidate) => candidate.phrase)
-    .filter((phrase, index, phrases) => phrases.findIndex((item) => item.includes(phrase)) === index)
+    .map((candidate) => candidate.phrase);
+
+  return [...exactCandidates, ...fallbackCandidates]
+    .filter((phrase, index, phrases) => {
+      const lowered = phrase.toLowerCase();
+      return phrases.findIndex((item) => item.toLowerCase().includes(lowered)) === index;
+    })
     .slice(0, limit);
 }
 
