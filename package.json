@@ -1,0 +1,23 @@
+{
+  "name": "plagifree",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:server\"",
+    "dev:web": "next dev",
+    "dev:server": "tsx watch server/src/index.ts",
+    "build": "next build && tsc -p server/tsconfig.json",
+    "start": "concurrently \"npm run start:web\" \"npm run start:server\"",
+    "start:web": "next start",
+    "start:server": "node server/dist/index.js"
+  },
+  "dependencies": {
+    "concurrently": "^9.2.1",
+    "express": "^5.1.0",
+    "next": "^15.5.3",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.2"
+  }
+}
