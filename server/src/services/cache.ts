@@ -16,6 +16,9 @@ function getRedisClient() {
       enableOfflineQueue: false,
       lazyConnect: true,
     });
+    redis.on("error", () => {
+      // Ignore connection noise and fall back to in-memory caching when Redis is unavailable.
+    });
   }
 
   return redis;
