@@ -31,7 +31,7 @@
 ## 🚀 Features
 
 - 📄 **Multi-Format Support**: Upload `.pdf`, `.docx`, or `.txt` files directly.
-- ⚡ **Instant Scanning**: Phrase-by-phrase lookups backed by Bing Search API.
+- ⚡ **Instant Scanning**: Gemini-grounded academic research for plagiarism checks.
 - 🔒 **Privacy First**: No accounts, no data harvesting. Your documents are yours.
 - 📊 **Detailed Reports**: Get a breakdown of unique vs. plagiarized content.
 - 📥 **PDF Export**: Download professional reports with a single click using PDFKit.
@@ -55,6 +55,7 @@
 - **Caching**: [Redis](https://redis.io/) (Phrase & Page Lookup Caching)
 - **Document Processing**: [Mammoth](https://www.npmjs.com/package/mammoth) (.docx), [pdf-parse](https://www.npmjs.com/package/pdf-parse) (.pdf)
 - **Report Generation**: [PDFKit](https://pdfkit.org/)
+- **AI Research**: [Google Gemini API](https://ai.google.dev/) with grounded Google Search
 
 ---
 
@@ -74,7 +75,8 @@ Copy the example environment file and fill in your credentials:
 cp .env.example .env
 ```
 Key variables needed:
-- `BING_API_KEY`: Your Microsoft Bing Search API key.
+- `GEMINI_API_KEY`: Your Google Gemini API key for grounded academic-source research.
+- `GEMINI_MODEL`: Optional model override. Defaults to `gemini-2.5-flash`.
 - `MONGODB_URI`: Your MongoDB connection string.
 - `REDIS_URL`: Your Redis server URL.
 
@@ -105,7 +107,7 @@ The application will be available at `http://localhost:3000` and the API at `htt
 ## 📝 Important Notes
 
 - **Fallback Mode**: If MongoDB or Redis are unavailable, the system automatically falls back to in-memory caching.
-- **Search Engine**: A valid Bing Search API key is required for live web scanning. If unavailable, the app will surface a warning.
+- **Search Engine**: Gemini is the only live search provider used by this app. If Gemini is unavailable or not configured, the scan now surfaces a warning instead of silently falling back to another provider.
 - **Zero Auth**: This app is designed to be completely anonymous.
 
 ---
