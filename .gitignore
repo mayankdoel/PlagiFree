@@ -11,6 +11,7 @@ server/dist/
 # Environment & Secrets
 .env
 .env.*
+!.env.example
 *.local
 
 # Databases & Data
