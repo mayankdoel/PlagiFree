@@ -106,12 +106,12 @@ export function ResultsClient({ reportId }: { reportId: string }) {
   const severity = severityConfig[report.severity];
   const analysisWarning = report.analysis?.warning;
   const providerLabel =
-    report.analysis?.searchProvider === "bing-api"
-      ? "Bing API"
-      : report.analysis?.searchProvider === "bing-web"
-        ? "Bing web fallback"
-        : "Search unavailable";
+    report.analysis?.searchProvider === "gemini-google-search"
+      ? "Gemini academic research"
+      : "Gemini unavailable";
   const searchedPhrases = report.analysis?.searchedPhrases ?? [];
+  const searchQueries = report.analysis?.searchQueries ?? [];
+  const researchSummary = report.analysis?.researchSummary;
   const showNoMatchState = report.matches.length === 0;
 
   return (
@@ -163,7 +163,9 @@ export function ResultsClient({ reportId }: { reportId: string }) {
             </div>
             <p className="text-sm leading-6 text-slate-400">
               {report.matches.length > 0
-                ? "This percentage reflects the strongest matched phrases and page similarity signals we found."
+                ? report.analysis?.searchProvider === "gemini-google-search"
+                  ? "This percentage reflects the strongest grounded sources Gemini surfaced and the overlap strength attached to those matches."
+                  : "This percentage reflects the strongest matched phrases and page similarity signals we found."
                 : "This percentage is currently 0% because the scan did not confirm any strong external matches."}
             </p>
             <div className="grid gap-3 text-sm text-slate-300">
@@ -200,13 +202,41 @@ export function ResultsClient({ reportId }: { reportId: string }) {
         </article>
 
         <div className="space-y-6">
+          {researchSummary || searchQueries.length ? (
+            <article className="glass-panel p-6">
+              <h2 className="mb-3 text-2xl font-semibold text-white">Research verdict</h2>
+              {researchSummary ? (
+                <p className="text-sm leading-7 text-slate-300">{researchSummary}</p>
+              ) : (
+                <p className="text-sm leading-7 text-slate-300">
+                  The checker ran an academic-source research pass and collected grounded search diagnostics.
+                </p>
+              )}
+              {searchQueries.length ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs uppercase tracking-[0.24em] text-slate-500">Gemini search queries</p>
+                  <div className="flex flex-wrap gap-2">
+                    {searchQueries.slice(0, 8).map((query) => (
+                      <span
+                        key={query}
+                        className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100"
+                      >
+                        {query}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </article>
+          ) : null}
+
           {showNoMatchState ? (
             <article className="glass-panel p-6">
-              <h2 className="mb-3 text-2xl font-semibold text-white">No strong web matches found</h2>
+              <h2 className="mb-3 text-2xl font-semibold text-white">No strong source matches found</h2>
               <p className="text-sm leading-7 text-slate-300">
                 This scan did not find convincing external matches for the strongest phrases extracted
                 from your document. That can mean the content is original, or that the available
-                search provider could not find enough comparable source text.
+                research and web sources did not expose enough comparable text.
               </p>
               <div className="mt-5 grid gap-3 text-sm text-slate-300 md:grid-cols-2">
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
@@ -260,7 +290,7 @@ export function ResultsClient({ reportId }: { reportId: string }) {
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-white/[0.03] text-slate-300">
                   <tr>
-                    <th className="px-6 py-4 font-medium">Source URL</th>
+                    <th className="px-6 py-4 font-medium">Source</th>
                     <th className="px-6 py-4 font-medium">Matched Phrase</th>
                     <th className="px-6 py-4 font-medium">Match %</th>
                   </tr>
@@ -272,6 +302,9 @@ export function ResultsClient({ reportId }: { reportId: string }) {
                       className="transition duration-200 hover:bg-white/[0.03]"
                     >
                       <td className="px-6 py-4 align-top text-slate-200">
+                        {match.title ? (
+                          <p className="mb-2 text-sm font-medium text-white">{match.title}</p>
+                        ) : null}
                         <a
                           href={match.url}
                           target="_blank"
@@ -280,6 +313,18 @@ export function ResultsClient({ reportId }: { reportId: string }) {
                         >
                           {match.url}
                         </a>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                            {match.sourceType === "research-paper"
+                              ? "Research paper"
+                              : match.sourceType === "web"
+                                ? "Web source"
+                                : "Source"}
+                          </span>
+                        </div>
+                        {match.snippet ? (
+                          <p className="mt-3 line-clamp-3 text-xs leading-6 text-slate-400">{match.snippet}</p>
+                        ) : null}
                       </td>
                       <td className="px-6 py-4 align-top text-slate-300">{match.matchedText}</td>
                       <td className={`px-6 py-4 align-top font-semibold ${severity.textColor}`}>
