@@ -85,6 +85,19 @@ export default function HomePage() {
             <CheckerForm />
           </div>
         </div>
+
+        <footer className="mt-16 flex flex-col gap-3 border-t border-white/10 pt-8 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+          <p>Website made by Mayank</p>
+          <a
+            href="https://github.com/mayankdoel"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 text-slate-300 transition duration-200 hover:text-white"
+          >
+            github.com/mayankdoel
+            <ArrowUpRight className="h-4 w-4" />
+          </a>
+        </footer>
       </section>
     </main>
   );
