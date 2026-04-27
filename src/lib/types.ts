@@ -1,4 +1,5 @@
 export type MatchSeverity = "original" | "moderate" | "high";
+export type SearchProvider = "gemini-google-search" | "unavailable";
 
 export interface SourceMatch {
   url: string;
@@ -6,13 +7,17 @@ export interface SourceMatch {
   similarity: number;
   snippet?: string;
   title?: string;
+  sourceType?: "research-paper" | "web" | "unknown";
 }
 
 export interface AnalysisMeta {
-  searchProvider: "bing-api" | "bing-web" | "unavailable";
+  searchProvider: SearchProvider;
+  pipelineVersion?: number;
   searchedPhrases: string[];
+  searchQueries?: string[];
   sourceLookups: number;
   warning?: string;
+  researchSummary?: string;
 }
 
 export interface PlagiarismReport {
