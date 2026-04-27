@@ -74,11 +74,24 @@ Copy the example environment file and fill in your credentials:
 ```bash
 cp .env.example .env
 ```
+How it works:
+- `.env.example` is the public template tracked in git.
+- `.env` is your private local file and should contain your real secrets.
+- Non-secret config such as `PORT`, `ALLOWED_ORIGIN`, and localhost URLs are safe to keep in `.env.example`.
+
 Key variables needed:
 - `GEMINI_API_KEY`: Your Google Gemini API key for grounded academic-source research.
 - `GEMINI_MODEL`: Optional model override. Defaults to `gemini-2.5-flash`.
+- `GEMINI_FALLBACK_MODELS`: Optional comma-separated fallback models used when the main Gemini model is busy.
+- `GEMINI_LEGACY_SEARCH_MODEL`: Optional legacy Gemini model used for the alternate grounded-search fallback.
 - `MONGODB_URI`: Your MongoDB connection string.
 - `REDIS_URL`: Your Redis server URL.
+
+Example flow:
+1. Leave `.env.example` committed so other users can see the required variables.
+2. Create `.env` from `.env.example`.
+3. Replace `GEMINI_API_KEY=your_google_gemini_api_key` with your real key.
+4. Keep the rest of the defaults unless your local setup uses different ports or services.
 
 ### 3. Install Dependencies
 ```bash
