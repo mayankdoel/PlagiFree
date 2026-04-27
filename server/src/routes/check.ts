@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 
-import { createReport, loadReport } from "../services/plagiarism-service";
+import { createReport, loadReport, PlagiarismCheckError } from "../services/plagiarism-service";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -22,7 +22,7 @@ checkRouter.post("/", upload.single("file"), async (request, response) => {
       matches: report.matches,
     });
   } catch (error) {
-    response.status(400).json({
+    response.status(error instanceof PlagiarismCheckError ? error.statusCode : 400).json({
       error: error instanceof Error ? error.message : "Unable to complete plagiarism check.",
     });
   }
