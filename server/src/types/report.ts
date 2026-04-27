@@ -4,13 +4,19 @@ export interface SourceMatch {
   similarity: number;
   title?: string;
   snippet?: string;
+  sourceType?: "research-paper" | "web" | "unknown";
 }
 
+export type SearchProvider = "gemini-google-search" | "unavailable";
+
 export interface AnalysisMeta {
-  searchProvider: "bing-api" | "bing-web" | "unavailable";
+  searchProvider: SearchProvider;
+  pipelineVersion?: number;
   searchedPhrases: string[];
+  searchQueries?: string[];
   sourceLookups: number;
   warning?: string;
+  researchSummary?: string;
 }
 
 export interface ReportRecord {
